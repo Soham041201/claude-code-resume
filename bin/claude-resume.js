@@ -102,32 +102,6 @@ switch (cmd) {
   case 'test': {
     const T = { bold: (s) => `\x1b[1m${s}\x1b[22m` };
 
-    // Collect existing session UUIDs from ~/.claude/sessions/
-    const sessionsDir = join(homedir(), '.claude', 'sessions');
-    const available = existsSync(sessionsDir)
-      ? readdirSync(sessionsDir)
-          .filter(f => f.endsWith('.json'))
-          .map(f => {
-            try {
-              const d = JSON.parse(readFileSync(join(sessionsDir, f), 'utf-8'));
-              return { file: f, sessionId: d.sessionId, cwd: d.cwd, startedAt: d.startedAt, name: d.name };
-            } catch { return null; }
-          })
-          .filter(Boolean)
-          .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
-      : [];
-
-    if (available.length === 0) {
-      console.log('');
-      console.log(`  ${T.bold('✖')}  No sessions found in ~/.claude/sessions/.`);
-      console.log(`     Start a Claude Code session first, then run this test.`);
-      console.log('');
-      process.exit(1);
-    }
-
-    const session = available[0];
-    const sessionId = session.sessionId;
-
     unloadExisting();
 
     console.log('');
@@ -136,7 +110,53 @@ switch (cmd) {
     console.log(`  ╰──────────────────────────────────────────╯`);
     console.log('');
 
-    const state = saveState(session.cwd || cwd, sessionId);
+    // 1. Start a fresh disposable session with a unique tag
+    const testTag = `resume-test-${Date.now()}`;
+    console.log(`  ${T.bold('→')}  Starting fresh test session...`);
+    const claudeProc = execSync(`claude --print "echo ${testTag}" 2>/dev/null & echo $!`, {
+      encoding: 'utf-8', stdio: 'pipe', shell: true,
+    }).trim();
+    const claudePid = parseInt(claudeProc.split('\n').pop());
+    console.log(`     PID: ${claudePid}`);
+
+    // 2. Wait for it to finish
+    execSync('sleep 5', { stdio: 'ignore' });
+
+    // 3. Find the transcript containing our test tag
+    const projDir = join(homedir(), '.claude', 'projects');
+    let sessionId = '';
+    let sessionCwd = cwd;
+    if (existsSync(projDir)) {
+      const dirs = readdirSync(projDir);
+      scan: for (const dir of dirs) {
+        const d = join(projDir, dir);
+        if (!statSync(d).isDirectory()) continue;
+        for (const f of readdirSync(d)) {
+          if (!f.endsWith('.jsonl')) continue;
+          try {
+            const content = readFileSync(join(d, f), 'utf-8');
+            if (content.includes(testTag)) {
+              const first = content.split('\n')[0];
+              const parsed = JSON.parse(first);
+              if (parsed.sessionId) {
+                sessionId = parsed.sessionId;
+                sessionCwd = parsed.cwd || cwd;
+                break scan;
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (!sessionId) {
+      console.log(`  ${T.bold('✖')}  Could not get session ID from transcript.`);
+      console.log(`     The test session might not have created a transcript file.`);
+      process.exit(1);
+    }
+
+    // 3. Save state and schedule resume
+    const state = saveState(sessionCwd, sessionId);
     logRateLimit({
       session_id: sessionId,
       project: state.project,
@@ -147,17 +167,17 @@ switch (cmd) {
       seconds_until_reset: 15,
       reset_at: new Date(Date.now() + 15000).toISOString(),
     });
-    scheduleResume(session.cwd || cwd, 15);
+    scheduleResume(sessionCwd, 15);
 
-    console.log(`  ${T.bold('✔')}  Using real session from history:`);
+    console.log(`  ${T.bold('✔')}  Fresh session created & saved:`);
     console.log(`     Session: ${sessionId}`);
-    console.log(`     Name:    ${session.name || '(unnamed)'}`);
-    console.log(`     CWD:     ${session.cwd || cwd}`);
+    console.log(`     CWD:     ${sessionCwd}`);
     console.log('');
     console.log(`  ${T.bold('✔')}  State saved, history logged`);
     console.log(`  ${T.bold('✔')}  Resume scheduled in 15 seconds`);
     console.log('');
-    console.log(`  ${T.bold('→')}  launchd will fire in 15s...`);
+    console.log(`  ${T.bold('→')}  A new Terminal window will open in 15s`);
+    console.log(`     with claude --resume ${sessionId}`);
     console.log('');
     process.stdout.write(`     Resuming in `);
     for (let i = 15; i > 0; i--) {
@@ -167,28 +187,13 @@ switch (cmd) {
     process.stdout.write(`\r     Resuming now...\n`);
     execSync('sleep 2', { stdio: 'ignore' });
 
-    // Check launchd results
-    const stdoutPath = join(homedir(), '.claude', 'resume', 'launchd-stdout.log');
-    const stderrPath = join(homedir(), '.claude', 'resume', 'launchd-stderr.log');
+    // 4. Check results
     const statusText = getScheduledStatus();
-
     console.log('');
     if (statusText === 'not scheduled') {
-      console.log(`  ${T.bold('✔')}  launchd fired and unloaded (expected self-cleanup)`);
+      console.log(`  ${T.bold('✔')}  launchd fired and unloaded`);
     } else {
-      console.log(`  ${T.bold('⚠')}  launchd still scheduled: ${statusText}`);
-    }
-
-    if (existsSync(stdoutPath)) {
-      const out = readFileSync(stdoutPath, 'utf-8').trim();
-      if (out) console.log(`  ${T.bold('→')}  stdout: ${out.split('\n').pop()}`);
-    }
-    if (existsSync(stderrPath)) {
-      const err = readFileSync(stderrPath, 'utf-8').trim();
-      if (err) {
-        const lastErr = err.split('\n').filter(Boolean).pop();
-        console.log(`  ${T.bold('→')}  stderr: ${lastErr}`);
-      }
+      console.log(`  ${T.bold('→')}  Terminal window should already be open with the resumed session.`);
     }
 
     console.log('');
