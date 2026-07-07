@@ -2,7 +2,7 @@
 
 import { saveState } from '../lib/save.js';
 import { logRateLimit } from '../lib/history.js';
-import { findResetTimeInTranscript, computeSecondsUntilReset } from '../lib/reset-time.js';
+import { findResetTimeInTranscript, computeSecondsFromErrorText, computeSecondsUntilReset } from '../lib/reset-time.js';
 import { scheduleResume } from '../lib/scheduler.js';
 import { basename } from 'path';
 
@@ -19,7 +19,22 @@ process.stdin.on('end', () => {
     let secondsUntilReset = 5 * 3600;
     let resetSource = 'fallback';
 
-    if (transcript_path) {
+    // Parse reset time from error_details first (most reliable — the
+    // error message like "resets 4:20pm (Asia/Calcutta)" is delivered
+    // via the StopFailure event, not always written to transcript
+    // before the process is killed).
+    if (error_details) {
+      const fromError = computeSecondsFromErrorText(error_details);
+      if (fromError !== 5 * 3600) {
+        secondsUntilReset = fromError;
+        resetSource = 'error_details';
+      }
+    }
+
+    // Fall back to transcript parsing if error_details didn't yield
+    // a result. The transcript may contain the error message if the
+    // process managed to flush before termination.
+    if (resetSource === 'fallback' && transcript_path) {
       const resetInfo = findResetTimeInTranscript(transcript_path);
       if (resetInfo) {
         secondsUntilReset = computeSecondsUntilReset(resetInfo);

@@ -5,7 +5,7 @@ import { logRateLimit, getHistory, clearHistory } from '../lib/history.js';
 import { scheduleResume, getScheduledStatus, unloadExisting } from '../lib/scheduler.js';
 import { findResetTimeInTranscript, computeSecondsUntilReset } from '../lib/reset-time.js';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, cpSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, cpSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
@@ -20,7 +20,8 @@ switch (cmd) {
   case 'setup': {
     const target = join(homedir(), '.claude', 'skills', 'claude-code-resume');
     if (!existsSync(dirname(target))) mkdirSync(dirname(target), { recursive: true });
-    cpSync(PLUGIN_ROOT, target, { recursive: true, force: true });
+    // Remove old install first, then copy via rsync to exclude .git
+    execSync(`rm -rf "${target}" 2>/dev/null; mkdir -p "${target}" && rsync -a --exclude=.git "${PLUGIN_ROOT}/" "${target}/"`, { stdio: 'pipe' });
     console.log(`Installed to ${target}`);
     console.log('');
     console.log('To activate, restart Claude Code or run: /reload-plugins');
@@ -100,6 +101,33 @@ switch (cmd) {
 
   case 'test': {
     const T = { bold: (s) => `\x1b[1m${s}\x1b[22m` };
+
+    // Collect existing session UUIDs from ~/.claude/sessions/
+    const sessionsDir = join(homedir(), '.claude', 'sessions');
+    const available = existsSync(sessionsDir)
+      ? readdirSync(sessionsDir)
+          .filter(f => f.endsWith('.json'))
+          .map(f => {
+            try {
+              const d = JSON.parse(readFileSync(join(sessionsDir, f), 'utf-8'));
+              return { file: f, sessionId: d.sessionId, cwd: d.cwd, startedAt: d.startedAt, name: d.name };
+            } catch { return null; }
+          })
+          .filter(Boolean)
+          .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+      : [];
+
+    if (available.length === 0) {
+      console.log('');
+      console.log(`  ${T.bold('✖')}  No sessions found in ~/.claude/sessions/.`);
+      console.log(`     Start a Claude Code session first, then run this test.`);
+      console.log('');
+      process.exit(1);
+    }
+
+    const session = available[0];
+    const sessionId = session.sessionId;
+
     unloadExisting();
 
     console.log('');
@@ -108,8 +136,7 @@ switch (cmd) {
     console.log(`  ╰──────────────────────────────────────────╯`);
     console.log('');
 
-    const sessionId = `test-${Date.now()}`;
-    const state = saveState(cwd, sessionId);
+    const state = saveState(session.cwd || cwd, sessionId);
     logRateLimit({
       session_id: sessionId,
       project: state.project,
@@ -117,19 +144,55 @@ switch (cmd) {
       error: 'rate_limit',
       error_details: 'Simulated rate limit for testing',
       reset_source: 'test',
-      seconds_until_reset: 10,
-      reset_at: new Date(Date.now() + 10000).toISOString(),
+      seconds_until_reset: 15,
+      reset_at: new Date(Date.now() + 15000).toISOString(),
     });
-    scheduleResume(cwd, 10);
+    scheduleResume(session.cwd || cwd, 15);
 
-    console.log(`  ${T.bold('✔')}  Saved state + session ID`);
-    console.log(`  ${T.bold('✔')}  Test entry logged to history`);
-    console.log(`  ${T.bold('✔')}  Resume scheduled in 10 seconds`);
+    console.log(`  ${T.bold('✔')}  Using real session from history:`);
+    console.log(`     Session: ${sessionId}`);
+    console.log(`     Name:    ${session.name || '(unnamed)'}`);
+    console.log(`     CWD:     ${session.cwd || cwd}`);
     console.log('');
-    console.log(`  ${T.bold('→')}  When the timer fires, launchd runs:`);
-    console.log(`     claude --resume ${sessionId}`);
+    console.log(`  ${T.bold('✔')}  State saved, history logged`);
+    console.log(`  ${T.bold('✔')}  Resume scheduled in 15 seconds`);
     console.log('');
-    console.log(`  ${T.bold('→')}  Inspect saved data:`);
+    console.log(`  ${T.bold('→')}  launchd will fire in 15s...`);
+    console.log('');
+    process.stdout.write(`     Resuming in `);
+    for (let i = 15; i > 0; i--) {
+      process.stdout.write(`\r     Resuming in ${i}...`);
+      execSync('sleep 1', { stdio: 'ignore' });
+    }
+    process.stdout.write(`\r     Resuming now...\n`);
+    execSync('sleep 2', { stdio: 'ignore' });
+
+    // Check launchd results
+    const stdoutPath = join(homedir(), '.claude', 'resume', 'launchd-stdout.log');
+    const stderrPath = join(homedir(), '.claude', 'resume', 'launchd-stderr.log');
+    const statusText = getScheduledStatus();
+
+    console.log('');
+    if (statusText === 'not scheduled') {
+      console.log(`  ${T.bold('✔')}  launchd fired and unloaded (expected self-cleanup)`);
+    } else {
+      console.log(`  ${T.bold('⚠')}  launchd still scheduled: ${statusText}`);
+    }
+
+    if (existsSync(stdoutPath)) {
+      const out = readFileSync(stdoutPath, 'utf-8').trim();
+      if (out) console.log(`  ${T.bold('→')}  stdout: ${out.split('\n').pop()}`);
+    }
+    if (existsSync(stderrPath)) {
+      const err = readFileSync(stderrPath, 'utf-8').trim();
+      if (err) {
+        const lastErr = err.split('\n').filter(Boolean).pop();
+        console.log(`  ${T.bold('→')}  stderr: ${lastErr}`);
+      }
+    }
+
+    console.log('');
+    console.log(`  ${T.bold('→')}  Inspect saved state:`);
     console.log(`     npx claude-code-resume load`);
     console.log(`     npx claude-code-resume history`);
     console.log('');
