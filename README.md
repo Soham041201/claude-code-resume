@@ -5,12 +5,14 @@ Auto-save your Claude Code session when the Max plan limit hits and resume right
 ```
 You've hit your session limit · resets 4:20pm (Asia/Calcutta)
   ↓
-  claude-code-resume saves git state + session context
+  claude-code-resume saves session ID + git state
   ↓
   Schedules launchd for the reset time
   ↓
-4:20pm → launchd opens Claude → resume skill shows a briefing
+4:20pm → launchd runs: claude --resume <session-id>
 ```
+
+Uses Claude Code's native `--resume` flag — the session is restored exactly as you left it.
 
 ## Install
 
@@ -31,12 +33,12 @@ claude plugin install claude-code-resume@claude-community
 
 ```
 StopFailure(rate_limit) hook fires
-  ├─ 1. Captures git state + session context → ~/.claude/resume/state.json
+  ├─ 1. Saves session_id + git state → ~/.claude/resume/state.json
   ├─ 2. Parses "resets 4:20pm" from session transcript
   ├─ 3. Logs event to ~/.claude/resume/history.jsonl
   └─ 4. Schedules launchd job
-         └─ At reset time: claude -p "/claude-code-resume:resume"
-              └─ Resume skill reads state → presents briefing
+         └─ At reset time: claude --resume <session-id>
+              └─ Claude restores the exact session
 ```
 
 ## Test it
@@ -47,7 +49,7 @@ After install, run a simulation to verify everything works:
 npx claude-code-resume test
 ```
 
-It saves your current state, logs a test history entry, and shows a 10-second countdown before launching Claude with the resume skill.
+It saves state with a test session ID, logs a history entry, and schedules a 10-second resume via launchd.
 
 ## CLI
 
@@ -67,7 +69,7 @@ All data stays local in `~/.claude/resume/`:
 
 | File | Purpose |
 |---|---|
-| `state.json` | Last saved session state (git branch, diff, recent messages) |
+| `state.json` | Last saved session ID + git context |
 | `history.jsonl` | Append-only rate-limit event log |
 | `launchd-stdout.log` | Launchd output (for debugging) |
 

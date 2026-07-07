@@ -14,7 +14,7 @@ process.stdin.on('end', () => {
     const { cwd, session_id, error, error_details, transcript_path } = event;
     const project = cwd ? basename(cwd) : 'unknown';
 
-    const state = saveState(cwd || process.cwd());
+    const state = saveState(cwd || process.cwd(), session_id);
 
     let secondsUntilReset = 5 * 3600;
     let resetSource = 'fallback';

@@ -108,35 +108,31 @@ switch (cmd) {
     console.log(`  ╰──────────────────────────────────────────╯`);
     console.log('');
 
-    const state = saveState(cwd);
+    const sessionId = `test-${Date.now()}`;
+    const state = saveState(cwd, sessionId);
     logRateLimit({
-      session_id: `test-${Date.now()}`,
+      session_id: sessionId,
       project: state.project,
       branch: state.branch,
       error: 'rate_limit',
-      error_details: 'Test: simulated rate limit',
+      error_details: 'Simulated rate limit for testing',
       reset_source: 'test',
       seconds_until_reset: 10,
       reset_at: new Date(Date.now() + 10000).toISOString(),
     });
     scheduleResume(cwd, 10);
 
-    console.log(`  ${T.bold('✔')}  Saved state for ${state.project} (${state.branch})`);
+    console.log(`  ${T.bold('✔')}  Saved state + session ID`);
     console.log(`  ${T.bold('✔')}  Test entry logged to history`);
     console.log(`  ${T.bold('✔')}  Resume scheduled in 10 seconds`);
     console.log('');
-
-    for (let i = 10; i > 0; i--) {
-      process.stdout.write(`\r  ⏳ ${T.bold(String(i))}  Resuming session...${' '.repeat(10)}`);
-      execSync('sleep 1');
-    }
-    process.stdout.write(`\r  ${T.bold('✨ Bam! Session resumed.')}${' '.repeat(30)}\n`);
+    console.log(`  ${T.bold('→')}  When the timer fires, launchd runs:`);
+    console.log(`     claude --resume ${sessionId}`);
     console.log('');
-
-    try {
-      const claudePath = execSync('which claude 2>/dev/null || echo claude', { encoding: 'utf-8' }).trim().split('\n')[0];
-      execSync(`"${claudePath}" -p "/claude-code-resume:resume"`, { stdio: 'inherit', cwd, env: { ...process.env, CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE: '1' } });
-    } catch {}
+    console.log(`  ${T.bold('→')}  Inspect saved data:`);
+    console.log(`     npx claude-code-resume load`);
+    console.log(`     npx claude-code-resume history`);
+    console.log('');
     break;
   }
 
