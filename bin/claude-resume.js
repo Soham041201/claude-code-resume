@@ -4,6 +4,7 @@ import { saveState, loadState, clearState } from '../lib/save.js';
 import { logRateLimit, getHistory, clearHistory } from '../lib/history.js';
 import { scheduleResume, getScheduledStatus, unloadExisting } from '../lib/scheduler.js';
 import { findResetTimeInTranscript, computeSecondsUntilReset } from '../lib/reset-time.js';
+import { execSync } from 'child_process';
 import { existsSync, mkdirSync, cpSync, readdirSync, statSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
@@ -51,7 +52,7 @@ switch (cmd) {
       }
     } catch {}
 
-    console.log('Commands: npx claude-code-resume save | load | history | status');
+    console.log('Commands: npx claude-code-resume save | load | history | test');
     break;
   }
 
@@ -97,6 +98,48 @@ switch (cmd) {
     console.log(getScheduledStatus());
     break;
 
+  case 'test': {
+    const T = { bold: (s) => `\x1b[1m${s}\x1b[22m` };
+    unloadExisting();
+
+    console.log('');
+    console.log(`  ╭──────────────────────────────────────────╮`);
+    console.log(`  │${T.bold('        claude-code-resume test         ')}│`);
+    console.log(`  ╰──────────────────────────────────────────╯`);
+    console.log('');
+
+    const state = saveState(cwd);
+    logRateLimit({
+      session_id: `test-${Date.now()}`,
+      project: state.project,
+      branch: state.branch,
+      error: 'rate_limit',
+      error_details: 'Test: simulated rate limit',
+      reset_source: 'test',
+      seconds_until_reset: 10,
+      reset_at: new Date(Date.now() + 10000).toISOString(),
+    });
+    scheduleResume(cwd, 10);
+
+    console.log(`  ${T.bold('✔')}  Saved state for ${state.project} (${state.branch})`);
+    console.log(`  ${T.bold('✔')}  Test entry logged to history`);
+    console.log(`  ${T.bold('✔')}  Resume scheduled in 10 seconds`);
+    console.log('');
+
+    for (let i = 10; i > 0; i--) {
+      process.stdout.write(`\r  ⏳ ${T.bold(String(i))}  Resuming session...${' '.repeat(10)}`);
+      execSync('sleep 1');
+    }
+    process.stdout.write(`\r  ${T.bold('✨ Bam! Session resumed.')}${' '.repeat(30)}\n`);
+    console.log('');
+
+    try {
+      const claudePath = execSync('which claude 2>/dev/null || echo claude', { encoding: 'utf-8' }).trim().split('\n')[0];
+      execSync(`"${claudePath}" -p "/claude-code-resume:resume"`, { stdio: 'inherit', cwd, env: { ...process.env, CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE: '1' } });
+    } catch {}
+    break;
+  }
+
   default:
     console.log(`
 Usage: claude-resume <command> [args]
@@ -110,5 +153,6 @@ Commands:
   clear-history      Clear history log
   schedule <secs>    Schedule a resume in N seconds (for testing)
   status             Check if resume is scheduled
+  test               Run a simulation (save + history + schedule 60s)
 `);
 }
