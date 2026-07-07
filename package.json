@@ -1,6 +1,6 @@
 {
   "name": "claude-code-resume",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Auto-save session state on Claude Code rate limit and resume at reset time",
   "license": "MIT",
   "author": "Soham",

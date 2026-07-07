@@ -1,13 +1,15 @@
 # claude-code-resume
 
-Auto-save session state when you hit your Claude Code session limit, log it, and auto-resume at reset time — no manual intervention.
+Auto-save your Claude Code session when the Max plan limit hits and resume right where you left off — no manual intervention, no lost context.
 
 ```
 You've hit your session limit · resets 4:20pm (Asia/Calcutta)
   ↓
-  claude-code-resume saves state + schedules launchd job
+  claude-code-resume saves git state + session context
   ↓
-4:20pm → launchd opens claude -p "/resume" in your project
+  Schedules launchd for the reset time
+  ↓
+4:20pm → launchd opens Claude → resume skill shows a briefing
 ```
 
 ## Install
@@ -16,18 +18,13 @@ You've hit your session limit · resets 4:20pm (Asia/Calcutta)
 npx claude-code-resume setup
 ```
 
-Or clone directly:
+Then restart Claude Code or run `/reload-plugins`.
+
+### Community marketplace (pending review)
 
 ```bash
-git clone https://github.com/Soham041201/claude-code-resume.git
-cd claude-code-resume
-node bin/claude-resume.js setup
-```
-
-Or as a Claude Code plugin (coming soon to community marketplace):
-
-```bash
-claude plugin add claude-code-resume@claude-community
+claude plugin marketplace add anthropics/claude-plugins-community
+claude plugin install claude-code-resume@claude-community
 ```
 
 ## How it works
@@ -37,39 +34,42 @@ StopFailure(rate_limit) hook fires
   ├─ 1. Captures git state + session context → ~/.claude/resume/state.json
   ├─ 2. Parses "resets 4:20pm" from session transcript
   ├─ 3. Logs event to ~/.claude/resume/history.jsonl
-  └─ 4. Schedules launchd job → at reset time, runs claude -p "/resume"
+  └─ 4. Schedules launchd job
+         └─ At reset time: claude -p "/claude-code-resume:resume"
+              └─ Resume skill reads state → presents briefing
 ```
 
-### Resume
+## Test it
 
-When the session limit resets, launchd fires and Claude opens with `/claude-code-resume:resume` — it reads the saved state and presents a briefing of what was being worked on.
-
-### History
-
-All rate-limited sessions are logged to `~/.claude/resume/history.jsonl`:
+After install, run a simulation to verify everything works:
 
 ```bash
-npx claude-resume history
+npx claude-code-resume test
 ```
 
-### CLI
+It saves your current state, logs a test history entry, and shows a 10-second countdown before launching Claude with the resume skill.
+
+## CLI
 
 ```bash
-npx claude-resume save     # Save current state
-npx claude-resume load     # Show saved state
-npx claude-resume history  # Rate-limit log
-npx claude-resume clear    # Clear saved state
-npx claude-resume status   # Check scheduled resume
+npx claude-code-resume setup      # Install to ~/.claude/skills/
+npx claude-code-resume test       # Simulate rate limit + resume
+npx claude-code-resume save       # Save current session state
+npx claude-code-resume load       # View saved state
+npx claude-code-resume history    # View rate-limit log
+npx claude-code-resume clear      # Clear saved state + unschedule
+npx claude-code-resume status     # Check scheduled resume
 ```
 
 ## Data
 
-All data lives in `~/.claude/resume/`:
+All data stays local in `~/.claude/resume/`:
 
 | File | Purpose |
 |---|---|
-| `state.json` | Last saved session state |
+| `state.json` | Last saved session state (git branch, diff, recent messages) |
 | `history.jsonl` | Append-only rate-limit event log |
+| `launchd-stdout.log` | Launchd output (for debugging) |
 
 ## Requirements
 
