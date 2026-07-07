@@ -1,8 +1,21 @@
 {
   "name": "claude-code-resume",
   "version": "1.0.0",
-  "description": "Auto-save session state on rate limit and resume at reset time",
-  "private": true,
+  "description": "Auto-save session state on Claude Code rate limit and resume at reset time",
+  "license": "MIT",
+  "author": "Soham",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soham/claude-code-resume.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "rate-limit",
+    "session",
+    "resume",
+    "plugin"
+  ],
   "type": "module",
   "bin": {
     "claude-resume": "./bin/claude-resume.js",
@@ -13,6 +26,12 @@
     "hooks",
     "skills",
     "bin",
-    "lib"
-  ]
+    "lib",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "setup": "node bin/claude-resume.js setup",
+    "test": "node --check bin/claude-resume.js bin/claude-resume-hook.js lib/save.js lib/history.js lib/reset-time.js lib/scheduler.js"
+  }
 }

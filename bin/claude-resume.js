@@ -3,11 +3,28 @@
 import { saveState, loadState, clearState } from '../lib/save.js';
 import { logRateLimit, getHistory, clearHistory } from '../lib/history.js';
 import { getScheduledStatus, unloadExisting } from '../lib/scheduler.js';
+import { execSync } from 'child_process';
+import { existsSync, mkdirSync, cpSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { homedir } from 'os';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PLUGIN_ROOT = join(__dirname, '..');
 
 const cmd = process.argv[2];
 const cwd = process.argv[3] || process.cwd();
 
 switch (cmd) {
+  case 'setup':
+    const target = join(homedir(), '.claude', 'skills', 'claude-code-resume');
+    if (!existsSync(dirname(target))) mkdirSync(dirname(target), { recursive: true });
+    cpSync(PLUGIN_ROOT, target, { recursive: true, force: true });
+    console.log(`Installed to ${target}`);
+    console.log('Restart Claude Code — the plugin auto-loads on next session.');
+    console.log('To test immediately: claude --plugin-dir ' + PLUGIN_ROOT);
+    break;
+
   case 'save':
     const state = saveState(cwd);
     console.log(JSON.stringify(state, null, 2));
@@ -54,6 +71,7 @@ switch (cmd) {
 Usage: claude-resume <command> [args]
 
 Commands:
+  setup              Install plugin to ~/.claude/skills/ (auto-load)
   save [cwd]         Save current session state
   load [cwd]         Load saved session state
   clear              Clear saved state and unschedule resume
