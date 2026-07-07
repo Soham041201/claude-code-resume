@@ -16,6 +16,14 @@ You've hit your session limit · resets 4:20pm (Asia/Calcutta)
 npx claude-code-resume setup
 ```
 
+Or clone directly:
+
+```bash
+git clone https://github.com/Soham041201/claude-code-resume.git
+cd claude-code-resume
+node bin/claude-resume.js setup
+```
+
 Or as a Claude Code plugin (coming soon to community marketplace):
 
 ```bash
