@@ -22,20 +22,12 @@ switch (cmd) {
     cpSync(PLUGIN_ROOT, target, { recursive: true, force: true });
     console.log(`Installed to ${target}`);
     console.log('');
-    console.log('What happens next:');
-    console.log('  1. Restart Claude Code — the plugin auto-loads on next session.');
-    console.log('  2. The StopFailure(rate_limit) hook is now registered automatically.');
-    console.log('  3. When you hit a Max plan session limit, the hook fires:');
-    console.log('     • Saves git state, session purpose, and recent context');
-    console.log('     • Parses the reset time from the error');
-    console.log('     • Schedules auto-resume via launchd');
-    console.log('     • Logs the event to ~/.claude/resume/history.jsonl');
-    console.log('  4. When the rate limit resets, launchd runs: claude -p "/resume"');
-    console.log('     This triggers the resume skill, which presents a briefing');
-    console.log('     of where you left off and asks if you want to continue.');
+    console.log('To activate, restart Claude Code or run: /reload-plugins');
     console.log('');
-    console.log('For help: npx claude-code-resume');
-    console.log('Test immediately: claude --plugin-dir ' + PLUGIN_ROOT);
+    console.log('Once active, the plugin automatically saves your session when');
+    console.log('the Max plan limit is hit and resumes when the reset window opens.');
+    console.log('');
+    console.log('Commands: npx claude-code-resume save | load | history | status');
     break;
 
   case 'save':
