@@ -1,0 +1,6 @@
+{
+  "name": "claude-code-resume",
+  "description": "Auto-save session state on rate limit and resume at reset time",
+  "version": "1.0.0",
+  "author": { "name": "Soham" }
+}
