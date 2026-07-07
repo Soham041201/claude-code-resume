@@ -2,10 +2,10 @@
 
 import { saveState, loadState, clearState } from '../lib/save.js';
 import { logRateLimit, getHistory, clearHistory } from '../lib/history.js';
-import { getScheduledStatus, unloadExisting } from '../lib/scheduler.js';
-import { execSync } from 'child_process';
-import { existsSync, mkdirSync, cpSync } from 'fs';
-import { join, dirname } from 'path';
+import { scheduleResume, getScheduledStatus, unloadExisting } from '../lib/scheduler.js';
+import { findResetTimeInTranscript, computeSecondsUntilReset } from '../lib/reset-time.js';
+import { existsSync, mkdirSync, cpSync, readdirSync, statSync } from 'fs';
+import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 
@@ -16,7 +16,7 @@ const cmd = process.argv[2];
 const cwd = process.argv[3] || process.cwd();
 
 switch (cmd) {
-  case 'setup':
+  case 'setup': {
     const target = join(homedir(), '.claude', 'skills', 'claude-code-resume');
     if (!existsSync(dirname(target))) mkdirSync(dirname(target), { recursive: true });
     cpSync(PLUGIN_ROOT, target, { recursive: true, force: true });
@@ -27,13 +27,39 @@ switch (cmd) {
     console.log('Once active, the plugin automatically saves your session when');
     console.log('the Max plan limit is hit and resumes when the reset window opens.');
     console.log('');
+
+    try {
+      const state = saveState(cwd);
+      const projDirName = cwd.replace(/\//g, '-');
+      const projDir = join(homedir(), '.claude', 'projects', projDirName);
+      if (existsSync(projDir)) {
+        const files = readdirSync(projDir)
+          .filter(f => f.endsWith('.jsonl'))
+          .map(f => ({ name: f, mtime: statSync(join(projDir, f)).mtimeMs }))
+          .sort((a, b) => b.mtime - a.mtime);
+        if (files.length > 0) {
+          const latest = join(projDir, files[0].name);
+          const resetInfo = findResetTimeInTranscript(latest);
+          if (resetInfo) {
+            const seconds = computeSecondsUntilReset(resetInfo);
+            scheduleResume(cwd, seconds);
+            console.log(`Recovered from a recent rate limit —`);
+            console.log(`resume scheduled in ~${Math.round(seconds / 60)} min.`);
+            console.log('');
+          }
+        }
+      }
+    } catch {}
+
     console.log('Commands: npx claude-code-resume save | load | history | status');
     break;
+  }
 
-  case 'save':
+  case 'save': {
     const state = saveState(cwd);
     console.log(JSON.stringify(state, null, 2));
     break;
+  }
 
   case 'load':
     const loaded = loadState();
@@ -60,12 +86,12 @@ switch (cmd) {
     console.log('history cleared');
     break;
 
-  case 'schedule':
+  case 'schedule': {
     const seconds = parseInt(process.argv[3] || '300');
-    const { scheduleResume } = await import('../lib/scheduler.js');
     scheduleResume(cwd, seconds);
     console.log(`scheduled resume in ${seconds}s`);
     break;
+  }
 
   case 'status':
     console.log(getScheduledStatus());
